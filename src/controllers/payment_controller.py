@@ -41,8 +41,8 @@ def process_payment(payment_id, credit_card_data):
         "payment_id": update_result["payment_id"],
         "is_paid": update_result["is_paid"]
     }
-    # TODO: appelez la méthode correctement
-    update_order(0, False)
+    # Notifier le Store Manager que la commande est maintenant payée (is_paid = true).
+    update_order(update_result["order_id"], update_result["is_paid"])
 
     return result
     
@@ -53,5 +53,30 @@ def _process_credit_card_payment(payment_data):
     logger.debug(payment_data.get('expirationDate'))
 
 def update_order(order_id, is_paid):
-    """ Trigger order update once it is paid"""
-    pass
+    """ Trigger order update once it is paid.
+    Le service de paiement appelle l'endpoint PUT /orders du Store Manager VIA l'API Gateway
+    KrakenD (et non directement), tel que défini dans config/krakend.json du dépôt log430-labo5
+    sous /store-manager-api/orders. """
+    try:
+        response_from_store_manager = requests.put(
+            'http://api-gateway:8080/store-manager-api/orders',
+            json={
+                'order_id': order_id,
+                'is_paid': is_paid,
+            },
+            headers={'Content-Type': 'application/json'},
+            timeout=5
+        )
+
+        if response_from_store_manager.ok:
+            logger.debug(f"Commande {order_id} mise à jour : {response_from_store_manager.json()}")
+            return True
+
+        logger.error(
+            f"Échec de la mise à jour de la commande {order_id} : "
+            f"{response_from_store_manager.status_code} {response_from_store_manager.text}"
+        )
+        return False
+    except requests.RequestException as e:
+        logger.error(f"Erreur lors de la mise à jour de la commande {order_id} : {e}")
+        return False
